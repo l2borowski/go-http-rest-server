@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/l2borowski/go-http-rest-server/server"
 	"github.com/l2borowski/go-http-rest-server/store"
 )
 
 var GlobalStore = make(map[string]string)
 
 func main() {
-	fmt.Println("\n*Go HTTP REST Server*")
-	//server.Listen()
-
 	var response interface{}
 	var err error
 
@@ -23,6 +21,7 @@ func main() {
 
 	store.Put(kvs, user, "myKey", 123)
 	store.Put(kvs, user, "myKey", 1234)
+	store.Put(kvs, "Lukasz", "LukaszKey", "Test123")
 
 	//TODO: Write tests instead
 	response, err = store.Get(kvs, "myKey")
@@ -65,7 +64,7 @@ func main() {
 		fmt.Println("response:", response)
 	}
 
-	err = store.Put(kvs, "MAC5013", "myKey2", 666)
+	err = store.Put(kvs, "MAC5013", "myKey2", 48)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -76,4 +75,9 @@ func main() {
 	} else {
 		fmt.Println("response:", response)
 	}
+
+	s := store.ListStore()
+	fmt.Println(s)
+
+	server.Listen(kvs, 8000)
 }

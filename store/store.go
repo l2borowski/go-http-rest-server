@@ -7,9 +7,7 @@ import (
 
 type StoreData struct {
 	Busy bool
-
-	KeyOwner map[string]string
-	Data     map[string]interface{}
+	Data map[string]interface{}
 }
 
 var ErrNotOwner = errors.New("not owner")
@@ -21,37 +19,39 @@ func NewStoreData() *StoreData {
 	}
 }
 
-func Get(s *StoreData, key string) (interface{}, error) {
-	s.Busy = true
-	defer func() { s.Busy = false }()
+func Get(kvs *StoreData, key string) (string, error) {
+	kvs.Busy = true
+	defer func() { kvs.Busy = false }()
 
-	element, ok := s.Data[key]
+	element, ok := kvs.Data[key]
 	if !ok {
-		return nil, fmt.Errorf("get: key %q: %w", key, ErrNotFound)
+		return "", fmt.Errorf("get: key %q: %w", key, ErrNotFound)
 	}
 
-	return element, nil
+	value := fmt.Sprint(element)
+
+	return value, nil
 }
 
-func Put(s *StoreData, user, key string, value interface{}) error {
-	s.Busy = true
-	defer func() { s.Busy = false }()
+func Put(kvs *StoreData, user, key string, value interface{}) error {
+	kvs.Busy = true
+	defer func() { kvs.Busy = false }()
 
-	_, ok := s.Data[key]
+	_, ok := kvs.Data[key]
 	if ok {
 		// Get corresponding entry
-		entry, err := GetEntryByKey(key)
+		entry, err := GetEntry(key)
 		if err != nil {
 			panic("Something went wrong - Missing entry")
 		}
 
 		// Check for permission
-		if !Authorised(user, entry.User) {
+		if !Authorised(user, entry.Owner) {
 			return fmt.Errorf("put: %q is %w of the %q", user, ErrNotOwner, key)
 		}
 
 		// Overwrite value for a given key
-		s.Data[key] = value
+		kvs.Data[key] = value
 
 		// Update entries
 		err = UpdateEntryValue(key, value)
@@ -61,7 +61,7 @@ func Put(s *StoreData, user, key string, value interface{}) error {
 
 	} else {
 		// Create value for a given key
-		s.Data[key] = value
+		kvs.Data[key] = value
 
 		// Add entry
 		AddNewEntry(user, key, value)
@@ -70,28 +70,28 @@ func Put(s *StoreData, user, key string, value interface{}) error {
 	return nil
 }
 
-func Delete(s *StoreData, user, key string) error {
-	s.Busy = true
-	defer func() { s.Busy = false }()
+func Delete(kvs *StoreData, user, key string) error {
+	kvs.Busy = true
+	defer func() { kvs.Busy = false }()
 
-	_, ok := s.Data[key]
+	_, ok := kvs.Data[key]
 	if !ok {
 		return fmt.Errorf("delete: key %q: %w", key, ErrNotFound)
 	}
 
 	// Get corresponding entry
-	entry, err := GetEntryByKey(key)
+	entry, err := GetEntry(key)
 	if err != nil {
 		panic("Something went wrong - Missing entry")
 	}
 
 	// Check for permission
-	if !Authorised(user, entry.User) {
+	if !Authorised(user, entry.Owner) {
 		return fmt.Errorf("delete: %q is %w of the %q", user, ErrNotOwner, key)
 	}
 
 	// Delete key and its value
-	delete(s.Data, key)
+	delete(kvs.Data, key)
 
 	// Delete entry
 	DeleteEntry(key)
@@ -102,7 +102,18 @@ func Delete(s *StoreData, user, key string) error {
 	return nil
 }
 
-func ListAll() {}
+func ListStore() []Entry {
+	return GetAllEntries()
+}
+
+func ListKey(key string) Entry {
+	entry, err := GetEntry(key)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	return entry
+}
 
 func Authorised(user, owner string) bool {
 	if user == "admin" {
