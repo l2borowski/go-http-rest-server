@@ -25,7 +25,7 @@ func Get(kvs *StoreData, key string) (string, error) {
 
 	element, ok := kvs.Data[key]
 	if !ok {
-		return "", fmt.Errorf("get: key %q: %w", key, ErrNotFound)
+		return "", fmt.Errorf("GET: key %q: %w", key, ErrNotFound)
 	}
 
 	value := fmt.Sprint(element)
@@ -47,7 +47,7 @@ func Put(kvs *StoreData, user, key string, value interface{}) error {
 
 		// Check for permission
 		if !Authorised(user, entry.Owner) {
-			return fmt.Errorf("put: %q is %w of the %q", user, ErrNotOwner, key)
+			return fmt.Errorf("PUT: %q is %w of the %q", user, ErrNotOwner, key)
 		}
 
 		// Overwrite value for a given key
@@ -76,7 +76,7 @@ func Delete(kvs *StoreData, user, key string) error {
 
 	_, ok := kvs.Data[key]
 	if !ok {
-		return fmt.Errorf("delete: key %q: %w", key, ErrNotFound)
+		return fmt.Errorf("DELETE: key %q: %w", key, ErrNotFound)
 	}
 
 	// Get corresponding entry
@@ -87,7 +87,7 @@ func Delete(kvs *StoreData, user, key string) error {
 
 	// Check for permission
 	if !Authorised(user, entry.Owner) {
-		return fmt.Errorf("delete: %q is %w of the %q", user, ErrNotOwner, key)
+		return fmt.Errorf("DELETE: %q is %w of the %q", user, ErrNotOwner, key)
 	}
 
 	// Delete key and its value
@@ -102,10 +102,13 @@ func Delete(kvs *StoreData, user, key string) error {
 	return nil
 }
 
+//TODO: Handle not found error
 func ListStore() []Entry {
 	return GetAllEntries()
 }
 
+//TODO: Returning short entry - Decide on one
+//TODO: Handle not found error
 func ListKey(key string) Entry {
 	entry, err := GetEntry(key)
 	if err != nil {

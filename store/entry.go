@@ -2,25 +2,30 @@ package store
 
 import (
 	"fmt"
-	"time"
 )
 
 type Entry struct {
-	Owner     string      `json:"user"`
-	Key       string      `json:"key"`
-	Value     interface{} `json:"value"`
-	Timestamp time.Time   `json:"timestamp"`
+	Owner string      `json:"owner"`
+	Key   string      `json:"key"`
+	Value interface{} `json:"value"`
+	//Timestamp time.Time   `json:"timestamp"`
 }
 
 var e = make([]Entry, 0)
 
 func AddNewEntry(user, key string, value interface{}) {
 	e = append(e, Entry{
-		Owner:     user,
-		Key:       key,
-		Value:     value,
-		Timestamp: time.Now(),
+		Key:   key,
+		Value: value,
+		Owner: user,
 	})
+
+	// e = append(e, Entry{
+	// 	Owner:     user,
+	// 	Key:       key,
+	// 	Value:     value,
+	// 	Timestamp: time.Now(),
+	// })
 }
 
 func GetEntry(key string) (Entry, error) {
@@ -30,7 +35,7 @@ func GetEntry(key string) (Entry, error) {
 		}
 	}
 
-	return Entry{}, fmt.Errorf("entry not found for key: %q", key)
+	return Entry{}, fmt.Errorf("entry %w for key: %q", ErrNotFound, key)
 }
 
 func GetEntryOwner(key string) (string, error) {
@@ -55,7 +60,7 @@ func UpdateEntryValue(key string, value interface{}) error {
 	for i := range e {
 		if e[i].Key == key {
 			e[i].Value = value
-			e[i].Timestamp = time.Now()
+			//eShort[i].Timestamp = time.Now()
 			return nil
 		}
 	}
@@ -63,6 +68,7 @@ func UpdateEntryValue(key string, value interface{}) error {
 	return fmt.Errorf("entry not found for key: %q", key)
 }
 
+//TODO: Handling short entry - Decide on one
 func DeleteEntry(key string) error {
 	// Find the index of the entry
 	var index int
