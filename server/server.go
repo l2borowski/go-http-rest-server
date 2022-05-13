@@ -18,7 +18,7 @@ func Listen(kvs *store.StoreData, port int) {
 	mux.HandleFunc("/", httpHandler(kvs))
 
 	fmt.Printf("Starting server on port %d\n\n", port)
-	err := http.ListenAndServe(":8000", mux) //TODO: Pass port value to the function
+	err := http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -139,18 +139,26 @@ func listStore(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	w.Write(responseBytes)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	w.Write(responseBytes)
 }
 
 func listKey(k string, w http.ResponseWriter, r *http.Request) {
-	response := store.ListKey(k)
+	response, err := store.ListKey(k)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+	}
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	w.Write(responseBytes)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	w.Write(responseBytes)
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {

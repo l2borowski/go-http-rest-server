@@ -1,11 +1,17 @@
 package main
 
 import (
+	"flag"
+
 	"github.com/l2borowski/go-http-rest-server/server"
 	"github.com/l2borowski/go-http-rest-server/store"
 )
 
 func main() {
+	var port int
+	flag.IntVar(&port, "port", 8000, "port to listen on")
+	flag.Parse()
+
 	kvs := store.NewStoreData()
-	server.Listen(kvs, 8000)
+	server.Listen(kvs, port)
 }

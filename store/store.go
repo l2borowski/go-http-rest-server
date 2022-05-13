@@ -109,13 +109,13 @@ func ListStore() []Entry {
 
 //TODO: Returning short entry - Decide on one
 //TODO: Handle not found error
-func ListKey(key string) Entry {
+func ListKey(key string) (Entry, error) {
 	entry, err := GetEntry(key)
 	if err != nil {
-		fmt.Println(err.Error())
+		return entry, err
 	}
 
-	return entry
+	return entry, nil
 }
 
 func Authorised(user, owner string) bool {

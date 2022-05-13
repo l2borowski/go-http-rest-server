@@ -35,7 +35,7 @@ func GetEntry(key string) (Entry, error) {
 		}
 	}
 
-	return Entry{}, fmt.Errorf("entry %w for key: %q", ErrNotFound, key)
+	return Entry{}, ErrNotFound
 }
 
 func GetEntryOwner(key string) (string, error) {
