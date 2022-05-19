@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,11 +13,11 @@ import (
 )
 
 func Listen(kvs *store.StoreData, port int) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", httpHandler(kvs))
+	http.HandleFunc("/", httpHandler(kvs))
+	addr := fmt.Sprintf(":%d", port)
 
 	fmt.Printf("Starting server on port %d\n\n", port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
+	err := http.ListenAndServe(addr, nil)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -29,6 +28,9 @@ func httpHandler(kvs *store.StoreData) func(http.ResponseWriter, *http.Request) 
 		panic("nil key value store!")
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Initialise channel for handling HTTP responses
+		var resChan = make(chan store.Response)
+
 		// Get URL path and parameters
 		path := r.URL.Path
 		param := strings.Split(path, "/")
@@ -37,26 +39,6 @@ func httpHandler(kvs *store.StoreData) func(http.ResponseWriter, *http.Request) 
 		user := ""
 		if len(r.Header["Authorization"]) > 0 {
 			user = r.Header["Authorization"][0]
-		}
-
-		switch path {
-		case "/list":
-			if r.Method == "GET" {
-				fmt.Println("GET:", r.URL.String())
-				listStore(w, r)
-				return
-			}
-		case "/ping":
-			if r.Method == "GET" {
-				fmt.Println("GET:", r.URL.String())
-				ping(w, r)
-				return
-			}
-		case "/shutdown":
-			if r.Method == "GET" {
-				fmt.Println("GET:", r.URL.String(), "user:", user)
-				shutdown(user, w, r)
-			}
 		}
 
 		// Check if any parameters are passed
@@ -72,30 +54,79 @@ func httpHandler(kvs *store.StoreData) func(http.ResponseWriter, *http.Request) 
 
 			switch path {
 			case "/store/" + key:
-				if r.Method == "GET" {
-					fmt.Println("GET:", r.URL.String(), "key:", key)
-					get(kvs, key, w, r)
-				} else if r.Method == "PUT" {
-					fmt.Println("PUT:", r.URL.String(), "value:", value)
-					put(kvs, user, key, value, w, r)
-				} else if r.Method == "DELETE" {
-					fmt.Println("DELETE:", r.URL.String(), "key:", key)
-					delete(kvs, user, key, w, r)
+				if r.Method == http.MethodGet {
+					//fmt.Println("GET:", r.URL.String(), "key:", key)
+					go store.GetRequest(key, resChan)
+				} else if r.Method == http.MethodPut {
+					//fmt.Println("PUT:", r.URL.String(), "value:", value)
+					go store.PutRequest(user, key, value, resChan)
+				} else if r.Method == http.MethodDelete {
+					//fmt.Println("DELETE:", r.URL.String(), "key:", key)
+					go store.DeleteRequest(user, key, resChan)
 				}
 			case "/list/" + key:
-				if r.Method == "GET" {
-					fmt.Println("GET:", r.URL.String(), "key:", key)
-					listKey(key, w, r)
+				if r.Method == http.MethodGet {
+					//fmt.Println("GET:", r.URL.String(), "key:", key)
+					go store.ListKeyRequest(key, resChan)
 				}
+			}
+		} else {
+			switch path {
+			case "/list":
+				if r.Method == http.MethodGet {
+					//fmt.Println("GET:", r.URL.String())
+					go store.ListStoreRequest(resChan)
+				}
+			case "/ping":
+				if r.Method == http.MethodGet {
+					//fmt.Println("GET:", r.URL.String())
+					PingResponse(w)
+					return
+				}
+			case "/shutdown":
+				if r.Method == http.MethodGet {
+					//fmt.Println("GET:", r.URL.String(), "user:", user)
+					ShutdownResponse(user, w)
+					return
+				}
+			}
+		}
+
+		// Handle HTTP responses
+		for res := range resChan {
+			switch res.Action {
+			case "Get":
+				GetResponse(res.Response, res.Err, w)
+				return
+			case "Put":
+				PutResponse(res.Value, res.Err, w)
+				return
+			case "Delete":
+				DeleteResponse(res.Err, w)
+				return
+			case "ListStore":
+				ListStoreResponse(res.Response, w)
+				return
+			case "ListKey":
+				ListKeyResponse(res.Response, res.Err, w)
+				return
+			case "Ping":
+				fmt.Println("Pinging...")
+				PingResponse(w)
+				return
+			case "Shutdown":
+				fmt.Println("Shutingdown...")
+				ShutdownResponse(res.User, w)
+				return
 			}
 		}
 	}
 }
 
-func get(kvs *store.StoreData, k string, w http.ResponseWriter, r *http.Request) {
-	response, err := store.Get(kvs, k)
+func GetResponse(response []byte, err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain")
+
 	if err != nil {
-		fmt.Println(err.Error())
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -103,10 +134,10 @@ func get(kvs *store.StoreData, k string, w http.ResponseWriter, r *http.Request)
 	w.Write([]byte(response))
 }
 
-func put(kvs *store.StoreData, u, k, v string, w http.ResponseWriter, r *http.Request) {
-	err := store.Put(kvs, u, k, v)
+func PutResponse(value string, err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain")
+
 	if err != nil {
-		fmt.Println(err.Error())
 		if errors.Is(err, store.ErrNotOwner) {
 			w.WriteHeader(http.StatusForbidden)
 		} else if errors.Is(err, store.ErrNotFound) {
@@ -115,13 +146,13 @@ func put(kvs *store.StoreData, u, k, v string, w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	w.Write([]byte(v))
+	w.Write([]byte(value))
 }
 
-func delete(kvs *store.StoreData, u, k string, w http.ResponseWriter, r *http.Request) {
-	err := store.Delete(kvs, u, k)
+func DeleteResponse(err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain")
+
 	if err != nil {
-		fmt.Println(err.Error())
 		if errors.Is(err, store.ErrNotOwner) {
 			w.WriteHeader(http.StatusForbidden)
 		} else if errors.Is(err, store.ErrNotFound) {
@@ -133,40 +164,34 @@ func delete(kvs *store.StoreData, u, k string, w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 }
 
-func listStore(w http.ResponseWriter, r *http.Request) {
-	response := store.ListStore()
-	responseBytes, err := json.Marshal(response)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
+func ListStoreResponse(response []byte, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
+
 	w.WriteHeader(http.StatusOK)
-	w.Write(responseBytes)
+	w.Write(response)
 }
 
-func listKey(k string, w http.ResponseWriter, r *http.Request) {
-	response, err := store.ListKey(k)
+func ListKeyResponse(response []byte, err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 	}
-	responseBytes, err := json.Marshal(response)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(responseBytes)
+	w.Write(response)
 }
 
-func ping(w http.ResponseWriter, r *http.Request) {
+func PingResponse(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("pong"))
 }
 
-func shutdown(u string, w http.ResponseWriter, r *http.Request) {
+func ShutdownResponse(u string, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain")
 	if u == "admin" {
 		w.WriteHeader(http.StatusOK)
 

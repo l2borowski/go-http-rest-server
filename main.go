@@ -8,10 +8,12 @@ import (
 )
 
 func main() {
+	kvs := store.NewStoreData()
+	store.Start(kvs)
+
 	var port int
 	flag.IntVar(&port, "port", 8000, "port to listen on")
 	flag.Parse()
 
-	kvs := store.NewStoreData()
 	server.Listen(kvs, port)
 }

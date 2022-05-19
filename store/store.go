@@ -1,14 +1,35 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
+
+type Operation struct {
+	action  string
+	user    string
+	key     string
+	value   interface{}
+	channel chan Response
+}
+
+type Response struct {
+	Action   string
+	User     string
+	Response []byte
+	Value    string
+	Err      error
+}
 
 type StoreData struct {
 	Busy bool
 	Data map[string]interface{}
 }
+
+var requests chan Operation = make(chan Operation)
+
+var done chan struct{} = make(chan struct{})
 
 var ErrNotOwner = errors.New("not owner")
 var ErrNotFound = errors.New("not found")
@@ -17,6 +38,125 @@ func NewStoreData() *StoreData {
 	return &StoreData{
 		Data: make(map[string]interface{}),
 	}
+}
+
+func Start(kvs *StoreData) {
+	go monitorRequests(kvs)
+}
+
+func Stop() {
+	close(requests)
+	<-done
+}
+
+func monitorRequests(kvs *StoreData) {
+	for op := range requests {
+		switch op.action {
+		case "Get":
+			response, err := Get(kvs, op.key)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			op.channel <- Response{
+				Action:   op.action,
+				Response: []byte(response),
+				Err:      err,
+			}
+
+		case "Put":
+			err := Put(kvs, op.user, op.key, op.value)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			value := fmt.Sprint(op.value)
+			op.channel <- Response{
+				Action:   op.action,
+				Value:    value,
+				Response: []byte(value),
+				Err:      err,
+			}
+
+		case "Delete":
+			err := Delete(kvs, op.user, op.key)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			op.channel <- Response{
+				Action: op.action,
+				Err:    err,
+			}
+
+		case "ListStore":
+			response := ListStore()
+			op.channel <- Response{
+				Action:   op.action,
+				Response: response,
+			}
+
+		case "ListKey":
+			response, err := ListKey(op.key)
+			op.channel <- Response{
+				Action:   op.action,
+				Response: response,
+				Err:      err,
+			}
+
+		default:
+		}
+	}
+	close(done)
+}
+
+func GetRequest(key string, c chan Response) {
+	op := Operation{
+		action:  "Get",
+		key:     key,
+		channel: c,
+	}
+
+	requests <- op
+}
+
+func PutRequest(user, key string, value interface{}, c chan Response) {
+	op := Operation{
+		action:  "Put",
+		user:    user,
+		key:     key,
+		value:   value,
+		channel: c,
+	}
+
+	requests <- op
+}
+
+func DeleteRequest(user, key string, c chan Response) {
+	op := Operation{
+		action:  "Delete",
+		user:    user,
+		key:     key,
+		channel: c,
+	}
+
+	requests <- op
+}
+
+func ListStoreRequest(c chan Response) {
+	op := Operation{
+		action:  "ListStore",
+		channel: c,
+	}
+
+	requests <- op
+}
+
+func ListKeyRequest(key string, c chan Response) {
+	op := Operation{
+		action:  "ListKey",
+		key:     key,
+		channel: c,
+	}
+
+	requests <- op
 }
 
 func Get(kvs *StoreData, key string) (string, error) {
@@ -102,20 +242,23 @@ func Delete(kvs *StoreData, user, key string) error {
 	return nil
 }
 
-//TODO: Handle not found error
-func ListStore() []Entry {
-	return GetAllEntries()
-}
-
-//TODO: Returning short entry - Decide on one
-//TODO: Handle not found error
-func ListKey(key string) (Entry, error) {
-	entry, err := GetEntry(key)
+func ListStore() []byte {
+	entries, err := json.Marshal(GetAllEntries())
 	if err != nil {
-		return entry, err
+		fmt.Println(err.Error())
 	}
 
-	return entry, nil
+	return entries
+}
+
+func ListKey(key string) ([]byte, error) {
+	entry, err := GetEntry(key)
+	response, e := json.Marshal(entry)
+	if e != nil {
+		fmt.Println(e.Error())
+	}
+
+	return response, err
 }
 
 func Authorised(user, owner string) bool {
